@@ -1,0 +1,103 @@
+// Prisma schema for ScribeAI
+// Database: PostgreSQL
+// Models: User, Session, TranscriptChunk, Summary
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ========================================
+// Enums
+// ========================================
+
+/// Session state representing the current recording status
+enum SessionState {
+  recording   // Currently recording audio
+  paused      // Recording paused
+  processing  // Processing transcript/summary
+  completed   // Session finished
+}
+
+// ========================================
+// Models
+// ========================================
+
+/// User model for authentication and session ownership
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  betterAuthId  String?   @unique @map("better_auth_id") // Future: Better Auth integration
+  createdAt     DateTime  @default(now()) @map("created_at")
+  updatedAt     DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  sessions      Session[]
+
+  @@map("users")
+  @@index([email])
+  @@index([betterAuthId])
+}
+
+/// Recording session model
+model Session {
+  id            String        @id @default(cuid())
+  userId        String        @map("user_id")
+  title         String?       // Optional session title
+  startedAt     DateTime      @default(now()) @map("started_at")
+  endedAt       DateTime?     @map("ended_at")
+  durationSec   Int?          @map("duration_sec") // Duration in seconds
+  state         SessionState  @default(recording)
+  createdAt     DateTime      @default(now()) @map("created_at")
+  updatedAt     DateTime      @updatedAt @map("updated_at")
+
+  // Relations
+  user              User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  transcriptChunks  TranscriptChunk[]
+  summary           Summary?
+
+  @@map("sessions")
+  @@index([userId])
+  @@index([state])
+  @@index([startedAt])
+}
+
+/// Individual transcript chunk from audio stream
+model TranscriptChunk {
+  id          String    @id @default(cuid())
+  sessionId   String    @map("session_id")
+  text        String    @db.Text
+  speaker     String?   // Optional speaker identification (future: diarization)
+  chunkIndex  Int       @map("chunk_index") // Order of chunks in session
+  timestamp   DateTime  @default(now()) // When this chunk was transcribed
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  // Relations
+  session     Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("transcript_chunks")
+  @@index([sessionId, chunkIndex])
+  @@index([sessionId, timestamp])
+}
+
+/// AI-generated summary of session
+model Summary {
+  id          String    @id @default(cuid())
+  sessionId   String    @unique @map("session_id")
+  content     String    @db.Text // AI-generated summary
+  keyPoints   String[]  @default([]) @map("key_points") // Extracted key points
+  actionItems String[]  @default([]) @map("action_items") // Extracted action items
+  createdAt   DateTime  @default(now()) @map("created_at")
+  updatedAt   DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  session     Session   @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("summaries")
+  @@index([sessionId])
+}
