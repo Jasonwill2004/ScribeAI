@@ -1,3 +1,5 @@
+#!/usr/bin/env tsx
+
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
