@@ -39,3 +39,7 @@ Thumbs.db
 # Misc
 *.pem
 .vercel
+
+# Temporary audio chunks
+apps/api-socket/tmp/*
+!apps/api-socket/tmp/.gitkeep
