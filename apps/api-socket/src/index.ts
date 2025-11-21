@@ -49,16 +49,38 @@ const io = new Server(httpServer, {
   },
   transports: ['websocket', 'polling'],
   allowEIO3: true, // Allow Engine.IO v3 clients
-  serveClient: false // Don't serve the Socket.IO client library
+  serveClient: false, // Don't serve the Socket.IO client library
+  // Very relaxed ping settings to handle long recordings
+  pingTimeout: 300000, // 5 minutes - how long to wait for pong before disconnect
+  pingInterval: 25000, // Send ping every 25 seconds
+  connectTimeout: 60000,
+  maxHttpBufferSize: 1e8, // 100 MB for large audio chunks
+  upgradeTimeout: 30000, // Time to wait for transport upgrade
 })
 
 // Add engine-level debug logging
-io.engine.on('connection', (conn) => {
+io.engine.on('connection', (conn: any) => {
   console.log(`🔌 Engine: new connection (id=${conn.id}, remote=${conn.request.socket.remoteAddress})`)
+  
+  conn.on('close', (reason: any) => {
+    console.log(`🔌 Engine: connection closed (id=${conn.id}, reason=${reason})`)
+  })
+  
+  conn.on('error', (err: any) => {
+    console.log(`🔌 Engine: connection error (id=${conn.id}, error=${err.message})`)
+  })
+  
+  conn.on('ping', () => {
+    console.log(`🏓 Engine: ping from ${conn.id}`)
+  })
+  
+  conn.on('pong', () => {
+    console.log(`🏓 Engine: pong from ${conn.id}`)
+  })
 })
 
-io.engine.on('error', (err) => {
-  console.error('💥 Engine connection error:', err)
+io.engine.on('error', (err: any) => {
+  console.error(`❌ Engine error:`, err)
 })
 
 // Setup socket event handlers with error handling

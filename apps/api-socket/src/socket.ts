@@ -33,17 +33,17 @@ interface SocketSessionData {
  * @param io - Socket.io server instance
  */
 export function setupSocketHandlers(io: Server) {
-  // Heartbeat monitor - disconnect clients with no heartbeat for 30s
+  // Heartbeat monitor - disconnect clients with no heartbeat for 90s
   const heartbeatInterval = setInterval(() => {
     const now = Date.now()
     io.sockets.sockets.forEach((socket) => {
       const data = socket.data as SocketSessionData
-      if (data.lastHeartbeat && now - data.lastHeartbeat > 30000) {
-        console.log(`💀 Client ${socket.id} timed out - no heartbeat`)
+      if (data.lastHeartbeat && now - data.lastHeartbeat > 90000) {
+        console.log(`💀 Client ${socket.id} timed out - no heartbeat (90s)`)
         socket.disconnect(true)
       }
     })
-  }, 10000) // Check every 10 seconds
+  }, 15000) // Check every 15 seconds
 
   io.on('connection', (socket: Socket) => {
     console.log(`✅ Client connected: ${socket.id}`)
@@ -335,30 +335,14 @@ export function setupSocketHandlers(io: Server) {
 
     /**
      * Handle client disconnection
+     * NOTE: Don't auto-pause sessions - let client explicitly pause/resume
+     * This prevents issues with brief disconnects during transport upgrades
      */
     socket.on('disconnect', async () => {
       console.log(`❌ Client disconnected: ${socket.id}`)
       
-      const data = socket.data as SocketSessionData
-      
-      // If there's an active session, mark it as interrupted
-      if (data.sessionId) {
-        try {
-          const session = await prisma.session.findUnique({
-            where: { id: data.sessionId }
-          })
-
-          if (session && session.state === 'recording') {
-            await prisma.session.update({
-              where: { id: data.sessionId },
-              data: { state: 'paused' }
-            })
-            console.log(`📝 Session ${data.sessionId} auto-paused due to disconnect`)
-          }
-        } catch (error) {
-          console.error('Error handling disconnect:', error)
-        }
-      }
+      // Removed auto-pause logic - sessions remain in their current state
+      // Client should explicitly call pause/end_session before closing
     })
 
     /**

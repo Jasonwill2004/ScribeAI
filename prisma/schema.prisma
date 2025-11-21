@@ -10,11 +10,6 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
-// ========================================
-// Enums
-// ========================================
-
 /// Session state representing the current recording status
 enum SessionState {
   recording   // Currently recording audio

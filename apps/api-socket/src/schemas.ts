@@ -31,8 +31,7 @@ export const ResumeSessionSchema = z.object({
 })
 
 export const HeartbeatSchema = z.object({
-  sessionId: z.string().uuid('Invalid session ID format'),
-  timestamp: z.number()
+  clientTime: z.number()
 })
 
 // Type exports
