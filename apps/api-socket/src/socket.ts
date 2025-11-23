@@ -2,6 +2,7 @@ import { Server, Socket } from 'socket.io'
 import { ZodError } from 'zod'
 import { prisma } from './db'
 import { saveAudioChunk } from './fileStorage'
+import { processTranscription } from './transcription/worker'
 import {
   StartSessionSchema,
   AudioChunkSchema,
@@ -180,6 +181,17 @@ export function setupSocketHandlers(io: Server) {
           sessionId: data.sessionId,
           chunkIndex: data.chunkIndex,
           timestamp: new Date().toISOString()
+        })
+
+        // Process transcription asynchronously (don't block acknowledgment)
+        processTranscription(io, {
+          sessionId: data.sessionId,
+          chunkIndex: data.chunkIndex,
+          chunkId: chunk.id,
+          filePath,
+          socketId: socket.id
+        }).catch(error => {
+          console.error(`❌ Background transcription failed for chunk ${data.chunkIndex}:`, error)
         })
       } catch (error) {
         console.error('audio_chunk error:', error)
