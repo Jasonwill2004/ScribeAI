@@ -3,6 +3,7 @@ import { ZodError } from 'zod'
 import { prisma } from './db'
 import { saveAudioChunk } from './fileStorage'
 import { processTranscription } from './transcription/worker'
+import { generateSessionSummary, emitCompletedEvent } from './summary/processor'
 import {
   StartSessionSchema,
   AudioChunkSchema,
@@ -316,20 +317,35 @@ export function setupSocketHandlers(io: Server) {
           timestamp: new Date().toISOString()
         })
 
-        // TODO: Trigger Gemini summary generation
-        // For now, simulate processing
-        setTimeout(async () => {
-          await prisma.session.update({
-            where: { id: data.sessionId },
-            data: { state: 'completed' }
+        // Generate AI summary asynchronously
+        // Don't await - let it process in background and emit 'completed' when done
+        generateSessionSummary(data.sessionId)
+          .then(async (summaryData) => {
+            // Emit completed event with summary data and download URL
+            await emitCompletedEvent(io, socket.id, summaryData)
+            
+            // Also emit session:status for backward compatibility
+            socket.emit('session:status', {
+              status: 'completed',
+              sessionId: data.sessionId,
+              timestamp: new Date().toISOString()
+            })
           })
-
-          socket.emit('session:status', {
-            status: 'completed',
-            sessionId: data.sessionId,
-            timestamp: new Date().toISOString()
+          .catch((error) => {
+            console.error(`[end_session] Summary generation failed for session ${data.sessionId}:`, error)
+            
+            // Emit error but still mark session as completed
+            socket.emit('error', {
+              message: 'Summary generation failed, but session is saved',
+              timestamp: new Date().toISOString()
+            })
+            
+            socket.emit('session:status', {
+              status: 'completed',
+              sessionId: data.sessionId,
+              timestamp: new Date().toISOString()
+            })
           })
-        }, 3000)
       } catch (error) {
         console.error('end_session error:', error)
         
