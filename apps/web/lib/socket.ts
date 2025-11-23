@@ -26,8 +26,7 @@ function createSocket(): Socket {
   });
 
   s.on("connect", () => {
-    console.log("✅ Socket connected with ID:", s.id);
-    console.log("🔍 Socket instance reference:", s);
+    // Socket connected successfully
   });
 
   s.on("disconnect", (reason) => {

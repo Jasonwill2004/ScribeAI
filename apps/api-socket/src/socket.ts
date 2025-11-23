@@ -1,5 +1,6 @@
 import { Server, Socket } from 'socket.io'
 import { ZodError } from 'zod'
+import { promises as fs } from 'fs'
 import { prisma } from './db'
 import { saveAudioChunk } from './fileStorage'
 import { processTranscription } from './transcription/worker'
@@ -18,6 +19,41 @@ import {
   type ResumeSessionPayload,
   type HeartbeatPayload
 } from './schemas'
+
+/**
+ * Wait for file to be fully written by checking if size stabilizes
+ */
+async function waitForFileReady(filePath: string, timeoutMs: number = 5000): Promise<void> {
+  const startTime = Date.now()
+  let lastSize = 0
+  let stableCount = 0
+
+  while (Date.now() - startTime < timeoutMs) {
+    try {
+      const stats = await fs.stat(filePath)
+      const currentSize = stats.size
+
+      if (currentSize === lastSize && currentSize > 0) {
+        stableCount++
+        // File size stable for 2 consecutive checks = file ready
+        if (stableCount >= 2) {
+          console.log(`✅ File ready: ${filePath} (${currentSize} bytes)`)
+          return
+        }
+      } else {
+        stableCount = 0
+      }
+
+      lastSize = currentSize
+      await new Promise(resolve => setTimeout(resolve, 500)) // Check every 500ms
+    } catch (error) {
+      // File doesn't exist yet, wait and retry
+      await new Promise(resolve => setTimeout(resolve, 500))
+    }
+  }
+
+  throw new Error(`File not ready after ${timeoutMs}ms: ${filePath}`)
+}
 
 /**
  * Socket.io event handlers for ScribeAI
@@ -184,15 +220,19 @@ export function setupSocketHandlers(io: Server) {
           timestamp: new Date().toISOString()
         })
 
-        // Process transcription asynchronously (don't block acknowledgment)
-        processTranscription(io, {
-          sessionId: data.sessionId,
-          chunkIndex: data.chunkIndex,
-          chunkId: chunk.id,
-          filePath,
-          socketId: socket.id
+        // Process transcription asynchronously with file-ready check
+        waitForFileReady(filePath, 5000).then(() => {
+          processTranscription(io, {
+            sessionId: data.sessionId,
+            chunkIndex: data.chunkIndex,
+            chunkId: chunk.id,
+            filePath,
+            socketId: socket.id
+          }).catch(error => {
+            console.error(`❌ Background transcription failed for chunk ${data.chunkIndex}:`, error)
+          })
         }).catch(error => {
-          console.error(`❌ Background transcription failed for chunk ${data.chunkIndex}:`, error)
+          console.error(`❌ File not ready for chunk ${data.chunkIndex}:`, error)
         })
       } catch (error) {
         console.error('audio_chunk error:', error)
@@ -332,14 +372,15 @@ export function setupSocketHandlers(io: Server) {
             })
           })
           .catch((error) => {
-            console.error(`[end_session] Summary generation failed for session ${data.sessionId}:`, error)
+            console.error(`[end_session] Critical failure in summary pipeline for session ${data.sessionId}:`, error)
             
-            // Emit error but still mark session as completed
+            // Emit error - session should still be saved with fallback summary
             socket.emit('error', {
-              message: 'Summary generation failed, but session is saved',
+              message: 'Summary generation encountered errors. Session saved with transcript only.',
               timestamp: new Date().toISOString()
             })
             
+            // Still mark as completed - the processor should have handled it
             socket.emit('session:status', {
               status: 'completed',
               sessionId: data.sessionId,

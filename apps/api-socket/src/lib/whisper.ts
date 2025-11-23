@@ -54,13 +54,18 @@ async function loadAudioAsFloat32(filePath: string): Promise<Float32Array> {
     ])
 
     const chunks: Buffer[] = []
+    let stderrOutput = ''
 
     ffmpeg.stdout.on('data', (data) => chunks.push(data))
 
-    ffmpeg.stderr.on('data', () => {}) // Ignore ffmpeg logs
+    ffmpeg.stderr.on('data', (data) => {
+      stderrOutput += data.toString()
+    })
 
     ffmpeg.on('close', (code) => {
       if (code !== 0) {
+        console.error(`❌ FFmpeg failed with exit code ${code}`)
+        console.error(`FFmpeg stderr: ${stderrOutput}`)
         reject(new Error(`ffmpeg exited with code ${code}`))
         return
       }
@@ -68,7 +73,10 @@ async function loadAudioAsFloat32(filePath: string): Promise<Float32Array> {
       resolve(new Float32Array(buffer.buffer, buffer.byteOffset, buffer.byteLength / 4))
     })
 
-    ffmpeg.on('error', reject)
+    ffmpeg.on('error', (err) => {
+      console.error(`❌ FFmpeg process error:`, err)
+      reject(err)
+    })
   })
 }
 

@@ -98,10 +98,17 @@ export default async function SessionDetailPage({ params }: SessionDetailProps) 
         {/* Summary Section */}
         {session.summary && (
           <div className="bg-white shadow-sm rounded-lg p-6 mb-8">
-            <h2 className="text-2xl font-bold text-gray-900 mb-4">AI Summary</h2>
+            <div className="flex items-center gap-3 mb-4">
+              <h2 className="text-2xl font-bold text-gray-900">AI Summary</h2>
+              {session.summary.content.startsWith('⚠️') && (
+                <span className="px-3 py-1 text-xs font-semibold rounded-full bg-yellow-100 text-yellow-800 border border-yellow-300">
+                  AI Unavailable - Fallback Summary
+                </span>
+              )}
+            </div>
             
             <div className="prose max-w-none">
-              <p className="text-gray-700 mb-6">{session.summary.content}</p>
+              <p className="text-gray-700 mb-6 whitespace-pre-wrap">{session.summary.content}</p>
               
               {session.summary.keyPoints.length > 0 && (
                 <div className="mb-6">
