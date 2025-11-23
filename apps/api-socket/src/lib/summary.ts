@@ -13,7 +13,7 @@
  * - Speaker attribution (future)
  */
 
-import { GoogleGenerativeAI } from '@google/generative-ai'
+import { GoogleGenAI } from '@google/genai'
 
 export interface SummaryResult {
   summary: string
@@ -30,7 +30,7 @@ export interface SummaryOptions {
   includeTopics?: boolean
 }
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || ''
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyAB3FP5dK_WUbMI7UvMgY9z0VPGmpoWrzA'
 
 /**
  * Generate summary from full transcript using Gemini Flash
@@ -66,8 +66,9 @@ export async function generateSummary(
     console.log(`🎯 Generating summary with Gemini Flash (${transcript.length} chars)`)
 
     // Initialize Gemini AI client
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+    const ai = new GoogleGenAI({
+      apiKey: GEMINI_API_KEY
+    })
 
     // Build prompt based on options
     const promptParts: string[] = [
@@ -91,8 +92,11 @@ export async function generateSummary(
     const prompt = promptParts.join('\n')
 
     // Generate summary
-    const result = await model.generateContent(prompt)
-    const text = result.response.text()
+    const response = await ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt
+    })
+    const text = response.text
 
     // Parse JSON response
     let parsed: any
