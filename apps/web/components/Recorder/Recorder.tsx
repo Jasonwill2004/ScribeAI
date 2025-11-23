@@ -75,6 +75,7 @@ export default function Recorder({ userId, sessionTitle, onSessionEnd }: Recorde
 
     // Transcript event handler
     const handleTranscript = (data: TranscriptEvent) => {
+      console.log('📝 Transcript received:', data)
       setTranscriptLines((prev) => [
         ...prev,
         {
@@ -142,7 +143,6 @@ export default function Recorder({ userId, sessionTitle, onSessionEnd }: Recorde
     const sendHeartbeat = () => {
       if (socket.connected) {
         socket.emit('heartbeat', { clientTime: Date.now() })
-        console.log('💓 Heartbeat sent')
       }
     }
 

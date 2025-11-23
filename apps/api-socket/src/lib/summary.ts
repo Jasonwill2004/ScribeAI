@@ -2,18 +2,16 @@
  * Google Gemini API Client for Summaries
  * 
  * Environment Variables Required:
- * - GEMINI_API_KEY: Your Google AI API key (get from https://makersuite.google.com/app/apikey)
+ * - GEMINI_API_KEY: Your Google Gemini API key
  * 
- * Documentation: https://ai.google.dev/gemini-api/docs
- * 
- * This module uses Gemini Flash for:
+ * This module uses Gemini 2.5 Flash for:
  * - Transcript summarization
  * - Key points extraction
  * - Action items detection
- * - Speaker attribution (future)
+ * - Fast, cost-effective AI summaries
  */
 
-import { GoogleGenAI } from '@google/genai'
+import { GoogleGenerativeAI } from '@google/generative-ai'
 
 export interface SummaryResult {
   summary: string
@@ -30,10 +28,10 @@ export interface SummaryOptions {
   includeTopics?: boolean
 }
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'AIzaSyAB3FP5dK_WUbMI7UvMgY9z0VPGmpoWrzA'
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY
 
 /**
- * Generate summary from full transcript using Gemini Flash
+ * Generate summary from full transcript using Google Gemini 2.5 Flash
  * 
  * @param transcript - Full transcript text
  * @param options - Summary generation options
@@ -63,56 +61,37 @@ export async function generateSummary(
   }
 
   try {
-    console.log(`🎯 Generating summary with Gemini Flash (${transcript.length} chars)`)
+    console.log(`🎯 Generating summary with Gemini 2.5 Flash (${transcript.length} chars)`)
 
     // Initialize Gemini AI client
-    const ai = new GoogleGenAI({
-      apiKey: GEMINI_API_KEY
-    })
+    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY)
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' })
 
-    // Build prompt based on options
-    const promptParts: string[] = [
-      `Analyze this transcript and provide:`,
-      `1. A concise summary (max ${maxLength} chars)`,
-    ]
+    // Build prompt
+    const prompt = `You are an expert meeting summarizer. Analyze the transcript and provide:
+1. A concise summary (max ${maxLength} characters)
+${includeKeyPoints ? '2. 3-5 key points as bullet points' : ''}
+${includeActionItems ? '3. Action items or decisions (if any)' : ''}
+${includeTopics ? '4. Main topics discussed' : ''}
 
-    if (includeKeyPoints) {
-      promptParts.push(`2. 3-5 key points as bullet points`)
-    }
-    if (includeActionItems) {
-      promptParts.push(`3. Action items or decisions (if any)`)
-    }
-    if (includeTopics) {
-      promptParts.push(`4. Main topics discussed`)
-    }
+Format your response as JSON with fields: summary, keyPoints, actionItems, topics
 
-    promptParts.push(`\nFormat your response as JSON with fields: summary, keyPoints, actionItems, topics`)
-    promptParts.push(`\nTranscript:\n${transcript}`)
+Transcript:
+${transcript}`
 
-    const prompt = promptParts.join('\n')
-
-    // Generate summary
-    const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
-      contents: prompt
-    })
-    const text = response.text
-
+    // Call Gemini API
+    const result = await model.generateContent(prompt)
+    const response = await result.response
+    const text = response.text()
+    
     // Parse JSON response
-    let parsed: any
-    try {
-      // Extract JSON from markdown code block if present
-      const jsonMatch = text.match(/```json\n([\s\S]*?)\n```/) || text.match(/\{[\s\S]*\}/)
-      parsed = JSON.parse(jsonMatch ? jsonMatch[1] || jsonMatch[0] : text)
-    } catch {
-      // Fallback: treat as plain summary
-      parsed = { summary: text, keyPoints: [], actionItems: [], topics: [] }
-    }
+    const jsonMatch = text.match(/\{[\s\S]*\}/)
+    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : {}
 
-    console.log(`✅ Summary generated successfully`)
+    console.log(`✅ Summary generated successfully with Gemini 2.5 Flash`)
 
     return {
-      summary: parsed.summary || text,
+      summary: parsed.summary || 'Summary not available',
       keyPoints: parsed.keyPoints || [],
       actionItems: parsed.actionItems || [],
       topics: parsed.topics || [],
@@ -125,11 +104,12 @@ export async function generateSummary(
 }
 
 /**
- * Get supported languages for Gemini Flash
+ * Get supported languages for Gemini (supports 50+ languages)
  */
 export function getSupportedLanguages(): string[] {
   return [
     'en', 'es', 'fr', 'de', 'it', 'pt', 'nl', 'pl', 'ru', 'ja', 'ko', 'zh',
     'ar', 'hi', 'tr', 'sv', 'da', 'no', 'fi', 'cs', 'hu', 'ro', 'th', 'vi',
+    'id', 'he', 'uk', 'bn', 'ms', 'fa', 'el', 'bg', 'sr', 'hr', 'sk', 'sl',
   ]
 }

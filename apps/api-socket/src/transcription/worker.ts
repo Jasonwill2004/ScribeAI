@@ -48,8 +48,9 @@ export async function processTranscription(
 
   try {
     // Step 1: Transcribe audio using Whisper (local, free)
+    // Whisper auto-detects language from audio (supports 90+ languages)
     const transcription: TranscriptionResult = await transcribeAudioChunk(filePath, {
-      language: 'english',
+      language: null, // Auto-detect language
       task: 'transcribe',
       model: 'base', // Better accuracy than tiny (~150MB model)
     })

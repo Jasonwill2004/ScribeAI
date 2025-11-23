@@ -4,25 +4,13 @@ import { useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-/**
- * Login page (placeholder)
- * 
- * TODO: Replace with Better Auth implementation
- * Better Auth provides built-in login components and flows
- * 
- * Example Better Auth integration:
- * ```typescript
- * import { signIn } from '@/lib/auth-client'
- * await signIn.email({ email, password })
- * ```
- */
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const returnUrl = searchParams.get('returnUrl') || '/dashboard'
+  const returnUrl = searchParams.get('returnUrl') || '/sessions'
 
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
+  const [email, setEmail] = useState('test@scribeai.dev')
+  const [password, setPassword] = useState('password123')
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -32,17 +20,22 @@ export default function LoginPage() {
     setError('')
 
     try {
-      // PLACEHOLDER: Implement Better Auth sign in
-      console.log('Login attempt:', email)
-      
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // For now, show error message
-      setError('Authentication not implemented. Please configure Better Auth.')
-      
-      // TODO: On successful auth, redirect to returnUrl
-      // router.push(returnUrl)
+      const response = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok || !data.success) {
+        setError(data.error || 'Login failed')
+        return
+      }
+
+      // Redirect on success
+      router.push(returnUrl)
+      router.refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
@@ -58,31 +51,31 @@ export default function LoginPage() {
             Sign in to ScribeAI
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600 dark:text-gray-400">
-            Or{' '}
-            <Link href="/register" className="font-medium text-blue-600 hover:text-blue-500">
-              create a new account
-            </Link>
+            AI-powered audio transcription
           </p>
         </div>
 
-        {/* Placeholder Notice */}
-        <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-          <div className="flex">
-            <div className="flex-shrink-0">
-              <svg className="h-5 w-5 text-yellow-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-              </svg>
-            </div>
-            <div className="ml-3">
-              <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                Placeholder Implementation
-              </h3>
-              <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
-                <p>Better Auth is not yet configured. This is a placeholder login page for PR #3.</p>
-              </div>
-            </div>
-          </div>
+        {/* Demo Credentials Banner */}
+        <div className="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
+          <h3 className="text-sm font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center">
+            <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
+              <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+            </svg>
+            Demo Credentials (Pre-filled)
+          </h3>
+          <p className="text-xs text-blue-700 dark:text-blue-300 mb-1">
+            Email: <code className="bg-blue-100 dark:bg-blue-800 px-1.5 py-0.5 rounded font-mono">test@scribeai.dev</code>
+          </p>
+          <p className="text-xs text-blue-700 dark:text-blue-300">
+            Password: <code className="bg-blue-100 dark:bg-blue-800 px-1.5 py-0.5 rounded font-mono">password123</code>
+          </p>
         </div>
+
+        {error && (
+          <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-lg p-4">
+            <p className="text-sm text-red-800 dark:text-red-200">{error}</p>
+          </div>
+        )}
 
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           <input type="hidden" name="remember" value="true" />

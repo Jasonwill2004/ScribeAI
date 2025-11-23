@@ -1,21 +1,21 @@
 /**
  * Authentication helper for ScribeAI
- * Server-side authentication utilities
+ * Simple session-based authentication
  * 
- * TODO: Replace placeholder implementation with Better Auth
- * Better Auth documentation: https://www.better-auth.com/docs
- * 
- * Integration steps:
- * 1. Install Better Auth: npm install better-auth
- * 2. Configure Better Auth client in lib/auth-client.ts
- * 3. Replace getCurrentUser with Better Auth session retrieval
- * 4. Update signIn/signOut to use Better Auth methods
+ * Uses secure HTTP-only cookies for session management
+ * Credentials: test@scribeai.dev / password123
  */
 
 import { cookies } from 'next/headers'
 import { PrismaClient } from '@prisma/client'
 
 const prisma = new PrismaClient()
+
+// Simple credentials (in production, use hashed passwords)
+const VALID_CREDENTIALS = {
+  email: 'test@scribeai.dev',
+  password: 'password123'
+}
 
 /**
  * User type from Prisma schema
@@ -52,18 +52,16 @@ export type Session = {
  */
 export async function getCurrentUser(): Promise<User | null> {
   try {
-    // PLACEHOLDER: Read auth token from cookies
     const cookieStore = await cookies()
-    const authToken = cookieStore.get('auth-token')?.value
+    const sessionId = cookieStore.get('session-id')?.value
 
-    if (!authToken) {
+    if (!sessionId) {
       return null
     }
 
-    // PLACEHOLDER: In production, verify JWT and extract user ID
-    // For now, return test user for development
+    // Get user from session
     const user = await prisma.user.findUnique({
-      where: { email: 'test@scribeai.dev' }
+      where: { id: sessionId }
     })
 
     return user
@@ -71,6 +69,55 @@ export async function getCurrentUser(): Promise<User | null> {
     console.error('Error getting current user:', error)
     return null
   }
+}
+
+/**
+ * Sign in with email and password
+ */
+export async function signIn(email: string, password: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    // Validate credentials
+    if (email !== VALID_CREDENTIALS.email || password !== VALID_CREDENTIALS.password) {
+      return { success: false, error: 'Invalid email or password' }
+    }
+
+    // Find or create user
+    let user = await prisma.user.findUnique({
+      where: { email }
+    })
+
+    if (!user) {
+      user = await prisma.user.create({
+        data: {
+          id: 'test-user-123',
+          email: 'test@scribeai.dev',
+          name: 'Test User'
+        }
+      })
+    }
+
+    // Set session cookie
+    const cookieStore = await cookies()
+    cookieStore.set('session-id', user.id, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'lax',
+      maxAge: 60 * 60 * 24 * 7 // 7 days
+    })
+
+    return { success: true }
+  } catch (error) {
+    console.error('Sign in error:', error)
+    return { success: false, error: 'An error occurred during sign in' }
+  }
+}
+
+/**
+ * Sign out current user
+ */
+export async function signOut(): Promise<void> {
+  const cookieStore = await cookies()
+  cookieStore.delete('session-id')
 }
 
 /**
@@ -116,36 +163,4 @@ export async function requireAuth(): Promise<User> {
   }
   
   return user
-}
-
-/**
- * Sign in placeholder
- * 
- * TODO: Replace with Better Auth sign in
- * Example:
- * ```typescript
- * import { signIn } from '@/lib/auth-client'
- * await signIn.email({ email, password })
- * ```
- */
-export async function signIn(email: string, password: string) {
-  // PLACEHOLDER: Implement Better Auth sign in
-  console.log('Sign in called with:', email)
-  throw new Error('Sign in not implemented - Please configure Better Auth')
-}
-
-/**
- * Sign out placeholder
- * 
- * TODO: Replace with Better Auth sign out
- * Example:
- * ```typescript
- * import { signOut } from '@/lib/auth-client'
- * await signOut()
- * ```
- */
-export async function signOut() {
-  // PLACEHOLDER: Implement Better Auth sign out
-  console.log('Sign out called')
-  throw new Error('Sign out not implemented - Please configure Better Auth')
 }
