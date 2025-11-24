@@ -43,3 +43,4 @@ Thumbs.db
 # Temporary audio chunks
 apps/api-socket/tmp/*
 !apps/api-socket/tmp/.gitkeep
+.tsbuildinfo

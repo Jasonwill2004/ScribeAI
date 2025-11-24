@@ -19,7 +19,7 @@ import {
 } from '@/lib/socketClient'
 
 // Configuration
-const CHUNK_DURATION_MS = parseInt(process.env.NEXT_PUBLIC_CHUNK_DURATION_MS || '15000') // 15 seconds default
+const CHUNK_DURATION_MS = parseInt(process.env.NEXT_PUBLIC_CHUNK_DURATION_MS || '5000') // 5 seconds - balanced for encoding stability
 
 type RecorderState = 'idle' | 'recording' | 'paused' | 'processing' | 'error'
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
@@ -76,8 +76,10 @@ export default function Recorder({ userId, sessionTitle, onSessionEnd }: Recorde
     // Transcript event handler
     const handleTranscript = (data: TranscriptEvent) => {
       console.log('📝 Transcript received:', data)
-      setTranscriptLines((prev) => [
-        ...prev,
+      
+      // Replace all previous transcripts with the aggregated one
+      // Since we now transcribe once at the end, there should only be one transcript
+      setTranscriptLines([
         {
           chunkIndex: data.chunkIndex,
           text: data.text,
@@ -205,16 +207,21 @@ export default function Recorder({ userId, sessionTitle, onSessionEnd }: Recorde
       const stream = await requestMicrophone()
       mediaStreamRef.current = stream
 
-      // Determine mime type
-      const mimeType = MediaRecorder.isTypeSupported('audio/webm')
+      // Determine mime type - prefer WebM with Opus for best browser support
+      const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus'
+        : MediaRecorder.isTypeSupported('audio/webm')
         ? 'audio/webm'
         : MediaRecorder.isTypeSupported('audio/mp4')
         ? 'audio/mp4'
         : ''
 
+      console.log(`🎵 Using MIME type: ${mimeType}`)
+
       // Create MediaRecorder
       const mediaRecorder = new MediaRecorder(stream, {
         mimeType,
+        audioBitsPerSecond: 128000, // 128 kbps for good quality
       })
 
       mediaRecorderRef.current = mediaRecorder
@@ -267,6 +274,13 @@ export default function Recorder({ userId, sessionTitle, onSessionEnd }: Recorde
       // Handle stop
       mediaRecorder.onstop = () => {
         console.log('⏹️ MediaRecorder stopped')
+        
+        // Clear flush interval
+        if ((mediaRecorder as any)._flushInterval) {
+          clearInterval((mediaRecorder as any)._flushInterval)
+          console.log('🧹 Cleared flush interval')
+        }
+        
         // Clean up stream
         if (mediaStreamRef.current) {
           mediaStreamRef.current.getTracks().forEach((track) => track.stop())
@@ -274,12 +288,14 @@ export default function Recorder({ userId, sessionTitle, onSessionEnd }: Recorde
         }
       }
 
-      // Start recording with time slices
+      // Start recording with timeslices (this ensures proper WebM container for each chunk)
       // Add small delay to ensure session is ready on server
       await new Promise(resolve => setTimeout(resolve, 500))
+      
+      // Use timeslice mode - each chunk will have complete EBML headers
       mediaRecorder.start(CHUNK_DURATION_MS)
       setRecorderState('recording')
-      console.log(`🎙️ Recording started with ${CHUNK_DURATION_MS}ms chunks`)
+      console.log(`🎙️ Recording started with ${CHUNK_DURATION_MS}ms timeslices`)
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to start recording'
       setError(errorMessage)
@@ -329,6 +345,13 @@ export default function Recorder({ userId, sessionTitle, onSessionEnd }: Recorde
       
       // Set flag to prevent chunks after stop
       isStoppingRef.current = true
+      
+      // Request final chunk data before stopping
+      if (mediaRecorderRef.current.state === 'recording') {
+        mediaRecorderRef.current.requestData()
+        // Wait for encoder to flush
+        await new Promise(resolve => setTimeout(resolve, 300))
+      }
       
       mediaRecorderRef.current.stop()
       setRecorderState('processing')
@@ -469,11 +492,13 @@ export default function Recorder({ userId, sessionTitle, onSessionEnd }: Recorde
 
       {/* Live Transcript */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-6">
-        <h3 className="text-lg font-semibold mb-4">Live Transcript</h3>
+        <h3 className="text-lg font-semibold mb-4">Transcript</h3>
         <div className="max-h-96 overflow-y-auto space-y-2 bg-gray-50 dark:bg-gray-900 p-4 rounded border border-gray-200 dark:border-gray-700">
           {transcriptLines.length === 0 ? (
             <p className="text-gray-500 dark:text-gray-400 italic text-center py-8">
-              Transcript will appear here as you speak...
+              {recorderState === 'recording' || recorderState === 'paused'
+                ? 'Recording in progress... Transcript will appear when you stop recording.'
+                : 'Transcript will appear here after recording...'}
             </p>
           ) : (
             transcriptLines.map((line, index) => (
@@ -482,7 +507,7 @@ export default function Recorder({ userId, sessionTitle, onSessionEnd }: Recorde
                 className="p-3 bg-white dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700"
               >
                 <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  Chunk {line.chunkIndex} • {new Date(line.timestamp).toLocaleTimeString()}
+                  {new Date(line.timestamp).toLocaleTimeString()}
                 </div>
                 <p className="text-gray-900 dark:text-gray-100">{line.text}</p>
               </div>
