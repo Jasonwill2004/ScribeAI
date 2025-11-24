@@ -8,6 +8,30 @@ import path from 'path'
 const TMP_DIR = path.join(process.cwd(), 'tmp')
 
 /**
+ * Detect audio format from binary data
+ */
+function detectAudioFormat(buffer: Buffer): string {
+  // Check for MP4 (ftyp box)
+  if (buffer.length >= 8) {
+    const ftypSignature = buffer.slice(4, 8).toString('ascii')
+    if (ftypSignature === 'ftyp') {
+      return 'mp4'
+    }
+  }
+  
+  // Check for WebM (EBML header)
+  if (buffer.length >= 4) {
+    const ebmlSignature = buffer.slice(0, 4).toString('hex')
+    if (ebmlSignature === '1a45dfa3') {
+      return 'webm'
+    }
+  }
+  
+  // Default to webm for backward compatibility
+  return 'webm'
+}
+
+/**
  * Ensure the tmp directory and session folder exist
  */
 export async function ensureSessionDirectory(sessionId: string): Promise<string> {
@@ -31,17 +55,20 @@ export async function saveAudioChunk(
   base64Data: string
 ): Promise<string> {
   const sessionDir = await ensureSessionDirectory(sessionId)
-  const filename = `${chunkIndex}.webm`
-  const filePath = path.join(sessionDir, filename)
-
+  
   try {
     // Convert Base64 to buffer
     const buffer = Buffer.from(base64Data, 'base64')
     
+    // Detect format from binary data
+    const format = detectAudioFormat(buffer)
+    const filename = `${chunkIndex}.${format}`
+    const filePath = path.join(sessionDir, filename)
+    
     // Write to disk
     await fs.writeFile(filePath, buffer)
     
-    console.log(`✅ Saved audio chunk: ${filePath} (${buffer.length} bytes)`)
+    console.log(`✅ Saved audio chunk: ${filePath} (${buffer.length} bytes, format: ${format})`)
     return filePath
   } catch (error) {
     console.error(`Error saving audio chunk ${chunkIndex} for session ${sessionId}:`, error)
@@ -73,10 +100,10 @@ export async function getSessionChunks(sessionId: string): Promise<string[]> {
   try {
     const files = await fs.readdir(sessionDir)
     return files
-      .filter(f => f.endsWith('.webm'))
+      .filter(f => f.endsWith('.webm') || f.endsWith('.mp4'))
       .sort((a, b) => {
-        const aIndex = parseInt(a.replace('.webm', ''))
-        const bIndex = parseInt(b.replace('.webm', ''))
+        const aIndex = parseInt(a.replace(/\.(webm|mp4)$/, ''))
+        const bIndex = parseInt(b.replace(/\.(webm|mp4)$/, ''))
         return aIndex - bIndex
       })
       .map(f => path.join(sessionDir, f))

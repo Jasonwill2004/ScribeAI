@@ -1,10 +1,12 @@
 import { Server, Socket } from 'socket.io'
 import { ZodError } from 'zod'
 import { promises as fs } from 'fs'
+import path from 'path'
 import { prisma } from './db'
 import { saveAudioChunk } from './fileStorage'
 import { processTranscription } from './transcription/worker'
 import { generateSessionSummary, emitCompletedEvent } from './summary/processor'
+import { concatenateWebMChunks, getSessionChunksSorted } from './lib/audioAggregator'
 import {
   StartSessionSchema,
   AudioChunkSchema,
@@ -35,8 +37,8 @@ async function waitForFileReady(filePath: string, timeoutMs: number = 5000): Pro
 
       if (currentSize === lastSize && currentSize > 0) {
         stableCount++
-        // File size stable for 2 consecutive checks = file ready
-        if (stableCount >= 2) {
+        // File size stable for 3 consecutive checks = file ready (increased from 2)
+        if (stableCount >= 3) {
           console.log(`✅ File ready: ${filePath} (${currentSize} bytes)`)
           return
         }
@@ -45,7 +47,7 @@ async function waitForFileReady(filePath: string, timeoutMs: number = 5000): Pro
       }
 
       lastSize = currentSize
-      await new Promise(resolve => setTimeout(resolve, 500)) // Check every 500ms
+      await new Promise(resolve => setTimeout(resolve, 800)) // Check every 800ms (increased from 500ms)
     } catch (error) {
       // File doesn't exist yet, wait and retry
       await new Promise(resolve => setTimeout(resolve, 500))
@@ -53,6 +55,67 @@ async function waitForFileReady(filePath: string, timeoutMs: number = 5000): Pro
   }
 
   throw new Error(`File not ready after ${timeoutMs}ms: ${filePath}`)
+}
+
+/**
+ * Aggregate all chunks for a session and transcribe once
+ * This solves the EBML header corruption issue in chunks 1+
+ */
+async function aggregateAndTranscribeSession(
+  io: Server,
+  socketId: string,
+  sessionId: string
+): Promise<void> {
+  try {
+    console.log(`🔄 Starting chunk aggregation for session: ${sessionId}`)
+
+    // Get session directory
+    const TMP_DIR = path.join(process.cwd(), 'tmp')
+    const sessionDir = path.join(TMP_DIR, sessionId)
+
+    // Get all chunks sorted by index
+    const chunkPaths = await getSessionChunksSorted(sessionDir)
+    
+    if (chunkPaths.length === 0) {
+      throw new Error('No chunks found for session')
+    }
+
+    console.log(`📦 Found ${chunkPaths.length} chunks to aggregate`)
+
+    // Create combined file path
+    const combinedFilePath = path.join(sessionDir, 'combined.webm')
+
+    // Concatenate all chunks into one valid WebM file
+    await concatenateWebMChunks(chunkPaths, combinedFilePath)
+
+    // Wait for combined file to be ready
+    await waitForFileReady(combinedFilePath, 10000)
+
+    // Get the first chunk from database for metadata
+    const firstChunk = await prisma.transcriptChunk.findFirst({
+      where: { sessionId },
+      orderBy: { chunkIndex: 'asc' }
+    })
+
+    if (!firstChunk) {
+      throw new Error('No chunk metadata found in database')
+    }
+
+    // Transcribe the combined file
+    console.log(`🎤 Transcribing combined audio file...`)
+    await processTranscription(io, {
+      sessionId,
+      chunkIndex: 0, // Use index 0 for the combined transcript
+      chunkId: firstChunk.id,
+      filePath: combinedFilePath,
+      socketId
+    })
+
+    console.log(`✅ Aggregation and transcription complete for session ${sessionId}`)
+  } catch (error) {
+    console.error(`❌ Aggregation failed for session ${sessionId}:`, error)
+    throw error
+  }
 }
 
 /**
@@ -220,20 +283,9 @@ export function setupSocketHandlers(io: Server) {
           timestamp: new Date().toISOString()
         })
 
-        // Process transcription asynchronously with file-ready check
-        waitForFileReady(filePath, 5000).then(() => {
-          processTranscription(io, {
-            sessionId: data.sessionId,
-            chunkIndex: data.chunkIndex,
-            chunkId: chunk.id,
-            filePath,
-            socketId: socket.id
-          }).catch(error => {
-            console.error(`❌ Background transcription failed for chunk ${data.chunkIndex}:`, error)
-          })
-        }).catch(error => {
-          console.error(`❌ File not ready for chunk ${data.chunkIndex}:`, error)
-        })
+        // Don't transcribe individual chunks - wait for session end
+        // This prevents EBML header corruption issues in chunks 1+
+        console.log(`✅ Chunk ${data.chunkIndex} saved, waiting for session end to aggregate and transcribe`)
       } catch (error) {
         console.error('audio_chunk error:', error)
         
@@ -357,9 +409,14 @@ export function setupSocketHandlers(io: Server) {
           timestamp: new Date().toISOString()
         })
 
-        // Generate AI summary asynchronously
-        // Don't await - let it process in background and emit 'completed' when done
-        generateSessionSummary(data.sessionId)
+        // Aggregate all chunks and transcribe once
+        // This solves the EBML header corruption issue
+        aggregateAndTranscribeSession(io, socket.id, data.sessionId)
+          .then(() => {
+            console.log(`✅ Aggregation and transcription complete for session ${data.sessionId}`)
+            // Now generate AI summary
+            return generateSessionSummary(data.sessionId)
+          })
           .then(async (summaryData) => {
             // Emit completed event with summary data and download URL
             await emitCompletedEvent(io, socket.id, summaryData)
