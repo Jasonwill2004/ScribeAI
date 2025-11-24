@@ -7,7 +7,7 @@ import Link from 'next/link'
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const returnUrl = searchParams.get('returnUrl') || '/sessions'
+  const returnUrl = searchParams.get('returnUrl') || '/sessions/new'
 
   const [email, setEmail] = useState('test@scribeai.dev')
   const [password, setPassword] = useState('password123')
