@@ -1,3 +1,5 @@
+import Link from 'next/link'
+
 /**
  * Home page component
  * Landing page for ScribeAI application
@@ -14,12 +16,12 @@ export default function Home() {
           Capture, transcribe, and summarize your conversations in real-time.
         </p>
         <div className="flex gap-4">
-          <button className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition">
+          <Link href="/login" className="px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg shadow-md transition">
             Get Started
-          </button>
-          <button className="px-6 py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-900 dark:text-white font-semibold rounded-lg shadow-md transition">
+          </Link>
+          <Link href="#features" className="px-6 py-3 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-900 dark:text-white font-semibold rounded-lg shadow-md transition">
             Learn More
-          </button>
+          </Link>
         </div>
       </div>
     </div>

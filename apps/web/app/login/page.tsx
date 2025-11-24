@@ -19,7 +19,7 @@ import Link from 'next/link'
 export default function LoginPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const returnUrl = searchParams.get('returnUrl') || '/dashboard'
+  const returnUrl = searchParams.get('returnUrl') || '/sessions/new'
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -32,16 +32,21 @@ export default function LoginPage() {
     setError('')
 
     try {
-      // PLACEHOLDER: Implement Better Auth sign in
-      console.log('Login attempt:', email)
+      // PLACEHOLDER: Simple test credentials for development
+      if (email === 'test@scribeai.com' && password === 'test123') {
+        console.log('Login successful with test credentials')
+        
+        // Simulate API call
+        await new Promise(resolve => setTimeout(resolve, 800))
+        
+        // Redirect to dashboard
+        router.push(returnUrl)
+      } else {
+        setError('Invalid credentials. Use: test@scribeai.com / test123')
+      }
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      
-      // For now, show error message
-      setError('Authentication not implemented. Please configure Better Auth.')
-      
-      // TODO: On successful auth, redirect to returnUrl
+      // TODO: Implement Better Auth sign in
+      // await signIn.email({ email, password })
       // router.push(returnUrl)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An error occurred')
@@ -75,10 +80,14 @@ export default function LoginPage() {
             </div>
             <div className="ml-3">
               <h3 className="text-sm font-medium text-yellow-800 dark:text-yellow-200">
-                Placeholder Implementation
+                Development Mode - Test Credentials
               </h3>
               <div className="mt-2 text-sm text-yellow-700 dark:text-yellow-300">
-                <p>Better Auth is not yet configured. This is a placeholder login page for PR #3.</p>
+                <p className="mb-2">Better Auth is not yet configured. Use these test credentials:</p>
+                <div className="bg-yellow-100 dark:bg-yellow-900/30 rounded p-2 font-mono text-xs">
+                  <p><strong>Email:</strong> test@scribeai.com</p>
+                  <p><strong>Password:</strong> test123</p>
+                </div>
               </div>
             </div>
           </div>
